@@ -102,7 +102,6 @@ class Segmenter(ClamsApp):
         tf = Annotation()
         tf.at_type = AnnotationTypes.TimeFrame.value
         tf.id = TIME_FRAME_PREFIX + str(index)
-        tf.properties['frameType'] = 'speech'
         # times should be in milliseconds
         tf.properties['start'] = int(start * 1000)
         tf.properties['end'] = int(end * 1000)
