@@ -2,7 +2,7 @@ FROM clamsproject/clams-python:0.1.6
 
 LABEL maintainer="Angus L'Herrou <piraka@brandeis.edu>"
 
-RUN apt-get update && apt-get install -y libsndfile1
+RUN apt-get update && apt-get install -y libsndfile1 ffmpeg 
 
 RUN mkdir /segmenter
 COPY . /segmenter
