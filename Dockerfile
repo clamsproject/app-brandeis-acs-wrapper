@@ -1,4 +1,4 @@
-FROM clamsproject/clams-python:0.1.6
+FROM clamsproject/clams-python:0.1.8
 
 LABEL maintainer="Angus L'Herrou <piraka@brandeis.edu>"
 
