@@ -1,6 +1,6 @@
 FROM clamsproject/clams-python-ffmpeg:0.1.8
 
-LABEL maintainer="Angus L'Herrou <piraka@brandeis.edu>"
+LABEL maintainer="CLAMS Team <admin@clams.ai>"
 
 RUN apt-get update && apt-get install -y libsndfile1
 
