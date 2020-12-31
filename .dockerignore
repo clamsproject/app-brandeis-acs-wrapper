@@ -4,3 +4,5 @@
 Dockerfile
 outerdemo.sh
 wgbh-audios/
+demo/results/
+demo/results-old/
