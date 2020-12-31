@@ -1,9 +1,9 @@
-# app-audio-segmenter
+# app-audio-segmenter v0.2.0
 
 To run the demo on the provided mp3 file, first build the Docker image, then run the outer demo script:
 
 ```
-$ docker build -t app-audio-segmenter:latest -t app-audio-segmenter:0.1.0 .
+$ docker build -t app-audio-segmenter:latest -t app-audio-segmenter:0.2.0 .
 $ chmod +x outerdemo.sh
 $ ./outerdemo.sh
 ```

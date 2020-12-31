@@ -14,7 +14,7 @@ from clams import ClamsApp, Restifier
 from mmif import DocumentTypes, AnnotationTypes, Mmif, Document, View, Annotation
 
 APP_VERSION = '0.2.0'
-WRAPPED_IMAGE = 'clamsproject/clams-python:0.1.6'
+WRAPPED_IMAGE = 'clamsproject/clams-python-ffmpeg:0.1.8'
 MEDIA_DIRECTORY = '/segmenter/data'
 SEGMENTER_DIR = '/segmenter/acoustic-classification-segmentation'
 TIME_FRAME_PREFIX = 'tf'

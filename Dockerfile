@@ -1,8 +1,8 @@
-FROM clamsproject/clams-python:0.1.8
+FROM clamsproject/clams-python-ffmpeg:0.1.8
 
 LABEL maintainer="Angus L'Herrou <piraka@brandeis.edu>"
 
-RUN apt-get update && apt-get install -y libsndfile1 ffmpeg 
+RUN apt-get update && apt-get install -y libsndfile1
 
 RUN mkdir /segmenter
 COPY . /segmenter
