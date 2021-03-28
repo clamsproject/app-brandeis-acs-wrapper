@@ -1,6 +1,3 @@
-# app-audio-segmenter version 0.2.0
-# author: Angus L'Herrou
-# org: CLAMS team
 import argparse
 import glob
 import os
@@ -13,8 +10,7 @@ from typing import Dict, Union
 from clams import ClamsApp, Restifier
 from mmif import DocumentTypes, AnnotationTypes, Mmif, Document, View, Annotation
 
-APP_VERSION = '0.2.0'
-WRAPPED_IMAGE = 'clamsproject/clams-python-ffmpeg:0.1.8'
+__version__ = '0.3.0'
 MEDIA_DIRECTORY = '/segmenter/data'
 SEGMENTER_DIR = '/segmenter/acoustic-classification-segmentation'
 TIME_FRAME_PREFIX = 'tf'
@@ -23,26 +19,19 @@ SEGMENTER_ACCEPTED_EXTENSIONS = {'.mp3', '.wav'}
 
 class Segmenter(ClamsApp):
 
-    def setupmetadata(self) -> dict:
+    def _appmetadata(self) -> dict:
         return {
-            "name": "Audio Segmenter",
+            "name": "Brandeis Acoustic Classification & Segmentation tool",
             "description": "tbd",
             "vendor": "Team CLAMS",
-            "iri": f"http://mmif.clams.ai/apps/audio-segmenter/{APP_VERSION}",
-            "wrappee": WRAPPED_IMAGE,
+            "iri": f"http://mmif.clams.ai/apps/brandeis-acs/{__version__}",
             "requires": [DocumentTypes.AudioDocument.value],
             "produces": [
                 AnnotationTypes.TimeFrame.value
             ]
         }
 
-    def sniff(self, mmif) -> bool:
-        if type(mmif) is not Mmif:
-            mmif = Mmif(mmif)
-        return len([loc for loc in mmif.get_documents_locations(DocumentTypes.AudioDocument.value)
-                    if os.path.splitext(loc)[-1] in SEGMENTER_ACCEPTED_EXTENSIONS]) > 0
-
-    def annotate(self, mmif: Union[str, dict, Mmif], save_tsv=False, pretty=False) -> str:
+    def _annotate(self, mmif: Union[str, dict, Mmif], save_tsv=False, pretty=False) -> Mmif:
         mmif_obj: Mmif
         if isinstance(mmif, Mmif):
             mmif_obj: Mmif = mmif
@@ -94,7 +83,7 @@ class Segmenter(ClamsApp):
             final_s_tf = self.create_segment_tf(final_s_start_ts, final_s_end_ts, tf_idx, frame_type='speech')
             v.add_annotation(final_s_tf)
 
-        return mmif_obj.serialize(pretty=pretty)
+        return mmif_obj
 
     @staticmethod
     def create_segment_tf(start: float, end: float, index: int, frame_type: str) -> Annotation:
