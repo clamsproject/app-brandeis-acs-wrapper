@@ -1,1 +1,2 @@
-clams-python~=0.1.8
+clams-python~=0.2.1
+brandeis-acs~=1.6
