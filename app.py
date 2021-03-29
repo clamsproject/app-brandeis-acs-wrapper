@@ -1,23 +1,19 @@
 import argparse
-import glob
 import os
-import csv
-import shutil
-import subprocess
-from io import StringIO
+import tempfile
 from typing import Dict, Union
 
+import bacs
 from clams import ClamsApp, Restifier
 from mmif import DocumentTypes, AnnotationTypes, Mmif, Document, View, Annotation
 
 __version__ = '0.3.0'
-MEDIA_DIRECTORY = '/segmenter/data'
-SEGMENTER_DIR = '/segmenter/acoustic-classification-segmentation'
-TIME_FRAME_PREFIX = 'tf'
-SEGMENTER_ACCEPTED_EXTENSIONS = {'.mp3', '.wav'}
 
 
 class Segmenter(ClamsApp):
+    PATH_ESCAPER = '+'
+    SEGMENTER_ACCEPTED_EXTENSIONS = {'.mp3', '.wav'}
+    TIME_FRAME_PREFIX = 'tf'
 
     def _appmetadata(self) -> dict:
         return {
@@ -42,59 +38,58 @@ class Segmenter(ClamsApp):
         docs = [document for document in mmif_obj.documents
                 if document.at_type == DocumentTypes.AudioDocument.value
                 and len(document.location) > 0
-                and os.path.splitext(document.location)[-1] in SEGMENTER_ACCEPTED_EXTENSIONS]
+                and os.path.splitext(document.location)[-1] in self.SEGMENTER_ACCEPTED_EXTENSIONS]
 
-        files = [document.location for document in docs]
+        files = [document.location_path() for document in docs]
 
-        # key them by location basenames
-        docs_dict: Dict[str, Document] = {os.path.splitext(os.path.basename(doc.location))[0]: doc for doc in docs}
-        assert len(docs) == len(docs_dict), 'no duplicate filenames'
-        # TODO (angus-lherrou @ 2020-10-03): allow duplicate basenames for files originally from different folders
-        #  by renaming files more descriptively
+        # key them by location
+        docs_dict: Dict[str, Document] = {self.escape_filepath(doc.location_path()): doc for doc in docs}
 
-        self.setup(files)
+        segmented, lengths = self.segment(files, save_tsv)
 
-        tsv_string = self.segment(save_tsv)
-
-        reader = csv.reader(StringIO(tsv_string), delimiter='\t')
-
-        for row in reader:
-            filename = os.path.splitext(os.path.split(row[0])[-1])[0]
-            splits = row[1:-1]  # first element is filepath, last element is speech ratio
-            assert len(splits) % 2 == 0, 'every row should have an even number of timestamps'
+        for filename, segmented_audio, total_frames in zip(files, segmented, lengths):
 
             v: View = mmif_obj.new_view()
-            self.stamp_view(v, docs_dict[filename].id)
+            self.stamp_view(v, docs_dict[self.escape_filepath(filename)].id)
 
             tf_idx = 1
 
-            for speech_start_idx in range(0, len(splits)-2, 2):
-                s_start_ts = float(splits[speech_start_idx])
-                s_end_ts = float(splits[speech_start_idx+1])
-                ns_end_ts = float(splits[speech_start_idx+2])
-                s_tf = self.create_segment_tf(s_start_ts, s_end_ts, tf_idx, frame_type='speech')
-                ns_tf = self.create_segment_tf(s_end_ts, ns_end_ts, tf_idx+1, frame_type='non-speech')
-                tf_idx += 2
-                v.add_annotation(s_tf)
-                v.add_annotation(ns_tf)
+            speech_starts = sorted(segmented_audio.keys())
+            if speech_starts[0] > 0:
+                self.create_segment_tf(0, speech_starts[0] - 1, tf_idx, 'non-speech')
+                tf_idx += 1
+            nonspeech_start = None
+            for speech_start in speech_starts:
+                if nonspeech_start is not None:
+                    nonspeech_end = speech_start - 1
+                    v.add_annotation(
+                        self.create_segment_tf(nonspeech_start, nonspeech_end, tf_idx, 'non-speech')
+                    )
+                    tf_idx += 1
+                speech_end = segmented_audio[speech_start]
+                nonspeech_start = speech_end + 1
+                v.add_annotation(
+                    self.create_segment_tf(speech_start, speech_end, tf_idx, 'speech')
+                )
+                tf_idx += 1
 
-            final_s_start_ts = float(splits[-2])
-            final_s_end_ts = float(splits[-1])
-            final_s_tf = self.create_segment_tf(final_s_start_ts, final_s_end_ts, tf_idx, frame_type='speech')
-            v.add_annotation(final_s_tf)
-
+            if nonspeech_start < total_frames:
+                v.add_annotation(
+                    self.create_segment_tf(nonspeech_start, total_frames, tf_idx, 'non-speech')
+                )
         return mmif_obj
 
-    @staticmethod
-    def create_segment_tf(start: float, end: float, index: int, frame_type: str) -> Annotation:
+    def escape_filepath(self, path):
+        return path.replace(os.sep, self.PATH_ESCAPER)
+
+    def create_segment_tf(self, start: float, end: float, index: int, frame_type: str) -> Annotation:
         assert frame_type in {'speech', 'non-speech'}
         tf = Annotation()
         tf.at_type = AnnotationTypes.TimeFrame.value
-        tf.id = TIME_FRAME_PREFIX + str(index)
-        tf.properties['frameType'] = 'speech'
-        # times should be in milliseconds
-        tf.properties['start'] = int(start * 1000)
-        tf.properties['end'] = int(end * 1000)
+        tf.id = self.TIME_FRAME_PREFIX + str(index)
+        # times should be passed in milliseconds
+        tf.properties['start'] = start
+        tf.properties['end'] = end
         tf.properties['frameType'] = frame_type
         return tf
 
@@ -104,37 +99,28 @@ class Segmenter(ClamsApp):
         view.metadata['app'] = self.metadata['iri']
         view.new_contain(AnnotationTypes.TimeFrame.value, {'unit': 'milliseconds', 'document': tf_source_id})
 
-    @staticmethod
-    def setup(files: list):
-        for file in glob.glob(os.path.join(MEDIA_DIRECTORY, '*')):
-            os.remove(file)
-        links = [os.path.join(MEDIA_DIRECTORY, os.path.basename(file)) for file in files]
-        for file, link in zip(files, links):
-            shutil.copy(file, link)
-
-    @staticmethod
-    def segment(save_tsv=False) -> str:
-        pretrained_model_dir = sorted(os.listdir(os.path.join(SEGMENTER_DIR, "pretrained")))[-1]
-        if save_tsv:
-            output = open('segmented.tsv', 'w')
-        else:
-            output = subprocess.PIPE
-        proc = subprocess.run(
-            [
-                'python',
-                os.path.join(SEGMENTER_DIR, 'run.py'),
-                '-s',
-                os.path.join(SEGMENTER_DIR, 'pretrained', pretrained_model_dir),
-                MEDIA_DIRECTORY
-            ],
-            stdout=output
-        )
-        if save_tsv:
-            output.close()
-            with open('segmented.tsv', 'r') as tsv:
-                return tsv.read()
-        else:
-            return proc.stdout.decode(encoding='utf8')
+    def segment(self, files: list, save_tsv=False) -> (list, list):
+        temp_dir = tempfile.TemporaryDirectory()
+        segmented = []
+        audio_length = []
+        for f in files:
+            os.symlink(f, os.path.join(temp_dir.name, self.escape_filepath(f)))
+        os.listdir(temp_dir.name)
+        model = bacs.classifier.load_model(bacs.defmodel_path)
+        for wav in bacs.reader.read_audios(temp_dir.name):
+            predicted = bacs.classifier.predict_pipeline(wav, model)
+            smoothed = bacs.smoothing.smooth(predicted)
+            speech_portions, total_frames = bacs.writer.index_frames(smoothed)
+            if save_tsv:
+                bacs.writer.print_durations(speech_portions, os.path.join(*wav), total_frames)
+            speech_portions_in_ms = {}
+            ms_multiplier = bacs.feature.FRAME_SIZE
+            for s, e in speech_portions.items():
+                speech_portions_in_ms[s * ms_multiplier] = e * ms_multiplier
+            segmented.append(speech_portions_in_ms)
+            audio_length.append(total_frames * ms_multiplier)
+        temp_dir.cleanup()
+        return segmented, audio_length
 
 
 if __name__ == '__main__':
@@ -165,9 +151,5 @@ if __name__ == '__main__':
             out_file.write(mmif_out)
     else:
         segmenter_app = Segmenter()
-        annotate = segmenter_app.annotate
-        segmenter_app.annotate = lambda *args, **kwargs: annotate(*args,
-                                                                  save_tsv=parsed_args.save_tsv,
-                                                                  pretty=parsed_args.pretty)
         segmenter_service = Restifier(segmenter_app)
         segmenter_service.run()
