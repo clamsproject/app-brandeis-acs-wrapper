@@ -1,4 +1,4 @@
-# app-audio-segmenter version 0.1.0
+# app-audio-segmenter version 0.2.0
 # author: Angus L'Herrou
 # org: CLAMS team
 import argparse
@@ -13,8 +13,8 @@ from typing import Dict, Union
 from clams import ClamsApp, Restifier
 from mmif import DocumentTypes, AnnotationTypes, Mmif, Document, View, Annotation
 
-APP_VERSION = '0.1.0'
-WRAPPED_IMAGE = 'clamsproject/clams-python:0.1.6'
+APP_VERSION = '0.2.0'
+WRAPPED_IMAGE = 'clamsproject/clams-python-ffmpeg:0.1.8'
 MEDIA_DIRECTORY = '/segmenter/data'
 SEGMENTER_DIR = '/segmenter/acoustic-classification-segmentation'
 TIME_FRAME_PREFIX = 'tf'
@@ -63,9 +63,9 @@ class Segmenter(ClamsApp):
         # TODO (angus-lherrou @ 2020-10-03): allow duplicate basenames for files originally from different folders
         #  by renaming files more descriptively
 
-        setup(files)
+        self.setup(files)
 
-        tsv_string = segment(save_tsv)
+        tsv_string = self.segment(save_tsv)
 
         reader = csv.reader(StringIO(tsv_string), delimiter='\t')
 
@@ -114,37 +114,37 @@ class Segmenter(ClamsApp):
         view.metadata['app'] = self.metadata['iri']
         view.new_contain(AnnotationTypes.TimeFrame.value, {'unit': 'milliseconds', 'document': tf_source_id})
 
+    @staticmethod
+    def setup(files: list):
+        for file in glob.glob(os.path.join(MEDIA_DIRECTORY, '*')):
+            os.remove(file)
+        links = [os.path.join(MEDIA_DIRECTORY, os.path.basename(file)) for file in files]
+        for file, link in zip(files, links):
+            shutil.copy(file, link)
 
-def setup(files: list):
-    for file in glob.glob(os.path.join(MEDIA_DIRECTORY, '*')):
-        os.remove(file)
-    links = [os.path.join(MEDIA_DIRECTORY, os.path.basename(file)) for file in files]
-    for file, link in zip(files, links):
-        shutil.copy(file, link)
-
-
-def segment(save_tsv=False) -> str:
-    pretrained_model_dir = sorted(os.listdir(os.path.join(SEGMENTER_DIR, "pretrained")))[-1]
-    if save_tsv:
-        output = open('segmented.tsv', 'w')
-    else:
-        output = subprocess.PIPE
-    proc = subprocess.run(
-        [
-            'python',
-            os.path.join(SEGMENTER_DIR, 'run.py'),
-            '-s',
-            os.path.join(SEGMENTER_DIR, 'pretrained', pretrained_model_dir),
-            MEDIA_DIRECTORY
-        ],
-        stdout=output
-    )
-    if save_tsv:
-        output.close()
-        with open('segmented.tsv', 'r') as tsv:
-            return tsv.read()
-    else:
-        return proc.stdout.decode(encoding='utf8')
+    @staticmethod
+    def segment(save_tsv=False) -> str:
+        pretrained_model_dir = sorted(os.listdir(os.path.join(SEGMENTER_DIR, "pretrained")))[-1]
+        if save_tsv:
+            output = open('segmented.tsv', 'w')
+        else:
+            output = subprocess.PIPE
+        proc = subprocess.run(
+            [
+                'python',
+                os.path.join(SEGMENTER_DIR, 'run.py'),
+                '-s',
+                os.path.join(SEGMENTER_DIR, 'pretrained', pretrained_model_dir),
+                MEDIA_DIRECTORY
+            ],
+            stdout=output
+        )
+        if save_tsv:
+            output.close()
+            with open('segmented.tsv', 'r') as tsv:
+                return tsv.read()
+        else:
+            return proc.stdout.decode(encoding='utf8')
 
 
 if __name__ == '__main__':
