@@ -1,27 +1,12 @@
-# app-audio-segmenter v0.3.0
+# Brandeis Acoustic Classificaiton & Segmentation tool for CLAMS 
 
-To run the demo on the provided mp3 file, first build the Docker image, then run the outer demo script:
+This is a CLAMS app that wraps [Brandeis-ACS](https://pypi.org/project/brandeis-acs/) tool. 
 
-```
-$ docker build -t app-audio-segmenter:latest -t app-audio-segmenter:0.3.0 .
-$ chmod +x outerdemo.sh
-$ ./outerdemo.sh
-```
+## Installtion 
+Clone this repository and install python dependencies listed in [`requirements.txt`](requirements.txt). 
+Then run `app.py`. 
+You can run it locally (`--once` option), or run it as a web app (without `--once` option).
+See `--help` message for more options.
 
-Open the newly created `demo/results` to see the generated tsv file (for comparison) and MMIF files.
-
-To run the app as a Flask app, build the image and run the container in the usual CLAMS-y way.
-
-Command line API for `app.py`:
-
-```
-usage: app.py [-h] [--once PATH] [--pretty] [--save-tsv]
-
-optional arguments:
-  -h, --help   show this help message and exit
-  --once PATH  Use this flag if you want to run the segmenter on a path you
-               specify, instead of running the Flask app.
-  --pretty     Use this flag to return "pretty" (indented) MMIF data.
-  --save-tsv   Use this flag to preserve the intermediary TSV file generated
-               by the segmenter.
-```
+You can also build a docker image with provided [`Dockerfile`](Dockerfile). 
+The docker image will run as a web app by default. 
