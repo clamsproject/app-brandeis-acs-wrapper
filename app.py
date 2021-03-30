@@ -7,7 +7,7 @@ import bacs
 from clams import ClamsApp, Restifier
 from mmif import DocumentTypes, AnnotationTypes, Mmif, Document, View, Annotation
 
-__version__ = '0.3.1'
+__version__ = '0.3.2'
 
 
 class Segmenter(ClamsApp):
