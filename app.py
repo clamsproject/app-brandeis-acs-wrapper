@@ -7,7 +7,7 @@ import bacs
 from clams import ClamsApp, Restifier
 from mmif import DocumentTypes, AnnotationTypes, Mmif, Document, View, Annotation
 
-__version__ = '0.3.0'
+__version__ = '0.3.1'
 
 
 class Segmenter(ClamsApp):
@@ -104,10 +104,21 @@ class Segmenter(ClamsApp):
         segmented = []
         audio_length = []
         for f in files:
-            os.symlink(f, os.path.join(temp_dir.name, self.escape_filepath(f)))
-        os.listdir(temp_dir.name)
+            print(f)
+            print(os.path.join(temp_dir.name, self.escape_filepath(f)))
+            if os.path.exists(f):
+                os.symlink(f, os.path.join(temp_dir.name, self.escape_filepath(f)))
+            else:
+                raise FileNotFoundError(f)
+
+        print(os.listdir(temp_dir.name))
         model = bacs.classifier.load_model(bacs.defmodel_path)
+        print(model)
+        for f in os.listdir(temp_dir.name):
+            print(os.path.splitext(f))
         for wav in bacs.reader.read_audios(temp_dir.name):
+            print("%%%%%%%%%%%%%%%%%%%%%%%%5")
+            print(wav)
             predicted = bacs.classifier.predict_pipeline(wav, model)
             smoothed = bacs.smoothing.smooth(predicted)
             speech_portions, total_frames = bacs.writer.index_frames(smoothed)
