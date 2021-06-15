@@ -4,10 +4,10 @@ import tempfile
 from typing import Dict, Union
 
 import bacs
-from clams import ClamsApp, Restifier
+from clams import ClamsApp, Restifier, AppMetadata
 from mmif import DocumentTypes, AnnotationTypes, Mmif, Document, View, Annotation
 
-__version__ = '0.3.2'
+__version__ = '0.3.3'
 
 
 class Segmenter(ClamsApp):
@@ -15,28 +15,29 @@ class Segmenter(ClamsApp):
     SEGMENTER_ACCEPTED_EXTENSIONS = {'.mp3', '.wav'}
     TIME_FRAME_PREFIX = 'tf'
 
-    def _appmetadata(self) -> dict:
-        return {
-            "name": "Brandeis Acoustic Classification & Segmentation tool",
-            "description": "tbd",
-            "vendor": "Team CLAMS",
-            "iri": f"http://mmif.clams.ai/apps/brandeis-acs/{__version__}",
-            "requires": [DocumentTypes.AudioDocument.value],
-            "produces": [
-                AnnotationTypes.TimeFrame.value
-            ]
-        }
+    def _appmetadata(self):
+        metadata = AppMetadata(
+            name="Brandeis ACS Wrapper",
+            description="Brandeis Acoustic Classification & Segmentation (ACS) is a audio segmentation tool developed "
+                        "at Brandeis Lab for Linguistics and Computation. "
+                        "The original software can be found at "
+                        "https://github.com/brandeis-llc/acoustic-classification-segmentation .",
+            app_version=__version__,
+            wrappee_version='0.1.10',
+            license='MIT',
+            identifier=f"http://apps.clams.ai/brandeis-acs-wrapper/{__version__}",
+        )
+        metadata.add_input(DocumentTypes.AudioDocument)
+        metadata.add_output(AnnotationTypes.TimeFrame)
+        return metadata
 
-    def _annotate(self, mmif: Union[str, dict, Mmif], save_tsv=False, pretty=False) -> Mmif:
-        mmif_obj: Mmif
-        if isinstance(mmif, Mmif):
-            mmif_obj: Mmif = mmif
-        else:
-            mmif_obj: Mmif = Mmif(mmif)
+    def _annotate(self, mmif: Union[str, dict, Mmif], save_tsv=False) -> Mmif:
+        if not isinstance(mmif, Mmif):
+            mmif = Mmif(mmif)
 
         # get AudioDocuments with locations
-        docs = [document for document in mmif_obj.documents
-                if document.at_type == DocumentTypes.AudioDocument.value
+        docs = [document for document in mmif.documents
+                if document.at_type == DocumentTypes.AudioDocument
                 and len(document.location) > 0
                 and os.path.splitext(document.location)[-1] in self.SEGMENTER_ACCEPTED_EXTENSIONS]
 
@@ -45,61 +46,44 @@ class Segmenter(ClamsApp):
         # key them by location
         docs_dict: Dict[str, Document] = {self.escape_filepath(doc.location_path()): doc for doc in docs}
 
-        segmented, lengths = self.segment(files, save_tsv)
+        segmented, lengths = self.run_bacs(files, save_tsv)
 
         for filename, segmented_audio, total_frames in zip(files, segmented, lengths):
 
-            v: View = mmif_obj.new_view()
-            self.stamp_view(v, docs_dict[self.escape_filepath(filename)].id)
-
-            tf_idx = 1
+            v: View = mmif.new_view()
+            self.sign_view(v)
+            v.new_contain(AnnotationTypes.TimeFrame, {'unit': 'milliseconds',
+                                                      'document': docs_dict[self.escape_filepath(filename)].id})
 
             speech_starts = sorted(segmented_audio.keys())
             if speech_starts[0] > 0:
-                self.create_segment_tf(0, speech_starts[0] - 1, tf_idx, 'non-speech')
-                tf_idx += 1
+                self.create_segment_tf(v, 0, speech_starts[0] - 1, 'non-speech')
             nonspeech_start = None
             for speech_start in speech_starts:
                 if nonspeech_start is not None:
                     nonspeech_end = speech_start - 1
-                    v.add_annotation(
-                        self.create_segment_tf(nonspeech_start, nonspeech_end, tf_idx, 'non-speech')
-                    )
-                    tf_idx += 1
+                    self.create_segment_tf(v, nonspeech_start, nonspeech_end, 'non-speech')
                 speech_end = segmented_audio[speech_start]
                 nonspeech_start = speech_end + 1
-                v.add_annotation(
-                    self.create_segment_tf(speech_start, speech_end, tf_idx, 'speech')
-                )
-                tf_idx += 1
+                self.create_segment_tf(v, speech_start, speech_end, 'speech')
 
             if nonspeech_start < total_frames:
-                v.add_annotation(
-                    self.create_segment_tf(nonspeech_start, total_frames, tf_idx, 'non-speech')
-                )
-        return mmif_obj
+                self.create_segment_tf(v, nonspeech_start, total_frames, 'non-speech')
+        return mmif
 
     def escape_filepath(self, path):
         return path.replace(os.sep, self.PATH_ESCAPER)
 
-    def create_segment_tf(self, start: float, end: float, index: int, frame_type: str) -> Annotation:
+    @staticmethod
+    def create_segment_tf(parent_view: View, start: float, end: float, frame_type: str) -> None:
         assert frame_type in {'speech', 'non-speech'}
-        tf = Annotation()
-        tf.at_type = AnnotationTypes.TimeFrame.value
-        tf.id = self.TIME_FRAME_PREFIX + str(index)
+        tf = parent_view.new_annotation(AnnotationTypes.TimeFrame)
         # times should be passed in milliseconds
-        tf.properties['start'] = start
-        tf.properties['end'] = end
-        tf.properties['frameType'] = frame_type
-        return tf
+        tf.add_property('start', start)
+        tf.add_property('end', end)
+        tf.add_property('frameType', frame_type)
 
-    def stamp_view(self, view: View, tf_source_id: str):
-        if view.is_frozen():
-            raise ValueError("can't modify an old view")
-        view.metadata['app'] = self.metadata['iri']
-        view.new_contain(AnnotationTypes.TimeFrame.value, {'unit': 'milliseconds', 'document': tf_source_id})
-
-    def segment(self, files: list, save_tsv=False) -> (list, list):
+    def run_bacs(self, files: list, save_tsv=False) -> (list, list):
         temp_dir = tempfile.TemporaryDirectory()
         segmented = []
         audio_length = []
@@ -133,13 +117,12 @@ if __name__ == '__main__':
                         metavar='PATH',
                         help='Use this flag if you want to run the segmenter on a path you specify, instead of running '
                              'the Flask app.')
-    parser.add_argument('--pretty',
-                        action='store_true',
-                        help='Use this flag to return "pretty" (indented) MMIF data.')
     parser.add_argument('--save-tsv',
                         action='store_true',
                         help='Use this flag to preserve the intermediary TSV file '
                              'generated by the segmenter.')
+    parser.add_argument('--production',
+                        action='store_true')
 
     parsed_args = parser.parse_args()
 
@@ -149,10 +132,13 @@ if __name__ == '__main__':
 
         segmenter_app = Segmenter()
 
-        mmif_out = segmenter_app.annotate(mmif_str, save_tsv=parsed_args.save_tsv, pretty=parsed_args.pretty)
+        mmif_out = segmenter_app.annotate(mmif_str, save_tsv=parsed_args.save_tsv)
         with open('mmif_out.json', 'w') as out_file:
             out_file.write(mmif_out)
     else:
         segmenter_app = Segmenter()
         segmenter_service = Restifier(segmenter_app)
-        segmenter_service.run()
+        if parsed_args.production:
+            segmenter_service.serve_production()
+        else:
+            segmenter_service.run()
