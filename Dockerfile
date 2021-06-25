@@ -1,4 +1,4 @@
-FROM clamsproject/clams-python-ffmpeg-tf2:0.2.2
+FROM clamsproject/clams-python-ffmpeg-tf2:0.4.3
 
 LABEL maintainer="CLAMS Team <admin@clams.ai>"
 
@@ -8,5 +8,4 @@ WORKDIR /app
 
 RUN pip install -r ./requirements.txt
 
-ENTRYPOINT ["python"]
-CMD ["app.py"]
+CMD ["python", "app.py"]
