@@ -1,4 +1,4 @@
-FROM clamsproject/clams-python-ffmpeg-tf2:0.4.3
+FROM clamsproject/clams-python-ffmpeg-tf2:0.5.1
 
 LABEL maintainer="CLAMS Team <admin@clams.ai>"
 

@@ -7,7 +7,7 @@ import bacs
 from clams import ClamsApp, Restifier, AppMetadata
 from mmif import DocumentTypes, AnnotationTypes, Mmif, Document, View
 
-__version__ = '0.3.4'
+__version__ = '0.3.5'
 
 
 class BACS(ClamsApp):
@@ -22,10 +22,11 @@ class BACS(ClamsApp):
                         "at Brandeis Lab for Linguistics and Computation. "
                         "The original software can be found at "
                         "https://github.com/brandeis-llc/acoustic-classification-segmentation .",
+            url="https://github.com/clamsproject/app-brandeis-acs",
             app_version=__version__,
-            wrappee_version='0.1.10',
-            wrappee_license='Apache2.0',
-            license='Apache2.0',
+            app_license='Apache2.0',
+            analyzer_version='0.1.10',
+            analyzer_license='Apache2.0',
             identifier=f"http://apps.clams.ai/brandeis-acs-wrapper/{__version__}",
         )
         metadata.add_input(DocumentTypes.AudioDocument)
