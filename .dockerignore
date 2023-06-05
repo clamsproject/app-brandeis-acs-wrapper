@@ -1,7 +1,13 @@
 .git/
+.github/
 .gitignore
+bin/
+build/
+*~
+**/*.pyc
+**/__pyche__
 .dockerignore
-Dockerfile
+ContainerFile
 outerdemo.sh
 wgbh-audios/
 demo/results/

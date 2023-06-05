@@ -1,2 +1,2 @@
-clams-python~=0.5.1.dev1
-brandeis-acs>=1.11
+clams-python==1.0.2
+brandeis-acs==1.11

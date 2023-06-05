@@ -1,42 +1,26 @@
 import argparse
 import os
 import tempfile
-from typing import Dict, Union
+from typing import Union, Dict
 
 import bacs
-from clams import ClamsApp, Restifier, AppMetadata
-from mmif import DocumentTypes, AnnotationTypes, Mmif, Document, View
+from clams import ClamsApp, Restifier
+from mmif import Mmif, View, Document, AnnotationTypes, DocumentTypes
 
-__version__ = '0.3.5'
+import metadata
 
 
-class BACS(ClamsApp):
+class BrandeisAcs(ClamsApp):
     PATH_ESCAPER = '+'
     SEGMENTER_ACCEPTED_EXTENSIONS = {'.mp3', '.wav'}
-    TIME_FRAME_PREFIX = 'tf'
 
     def _appmetadata(self):
-        metadata = AppMetadata(
-            name="Brandeis ACS Wrapper",
-            description="Brandeis Acoustic Classification & Segmentation (ACS) is a audio segmentation tool developed "
-                        "at Brandeis Lab for Linguistics and Computation. "
-                        "The original software can be found at "
-                        "https://github.com/brandeis-llc/acoustic-classification-segmentation .",
-            url="https://github.com/clamsproject/app-brandeis-acs",
-            app_version=__version__,
-            app_license='Apache2.0',
-            analyzer_version='0.1.10',
-            analyzer_license='Apache2.0',
-            identifier=f"http://apps.clams.ai/brandeis-acs-wrapper/{__version__}",
-        )
-        metadata.add_input(DocumentTypes.AudioDocument)
-        metadata.add_output(AnnotationTypes.TimeFrame)
-        return metadata
+        pass
 
-    def _annotate(self, mmif: Union[str, dict, Mmif], **kwargs) -> Mmif:
+    def _annotate(self, mmif: Union[str, dict, Mmif], **parameters) -> Mmif:
         if not isinstance(mmif, Mmif):
             mmif = Mmif(mmif)
-        config = self.get_configuration(**kwargs)
+        config = self.get_configuration(**parameters)
 
         # get AudioDocuments with locations
         docs = [document for document in mmif.documents
@@ -56,36 +40,26 @@ class BACS(ClamsApp):
             v: View = mmif.new_view()
             self.sign_view(v, config)
             v.new_contain(AnnotationTypes.TimeFrame,
-                          timeUnit='milliseconds',
+                          timeUnit=metadata.timeunit,
                           document=docs_dict[self.escape_filepath(filename)].id)
 
             speech_starts = sorted(segmented_audio.keys())
             if speech_starts[0] > 0:
-                self.create_segment_tf(v, 0, speech_starts[0] - 1, 'non-speech')
+                v.new_annotation(AnnotationTypes.TimeFrame, start=0, end=speech_starts[0] - 1, frameType='non-speech')
             nonspeech_start = None
             for speech_start in speech_starts:
                 if nonspeech_start is not None:
                     nonspeech_end = speech_start - 1
-                    self.create_segment_tf(v, nonspeech_start, nonspeech_end, 'non-speech')
+                    v.new_annotation(AnnotationTypes.TimeFrame, start=nonspeech_start, end=nonspeech_end, frameType='non-speech')
                 speech_end = segmented_audio[speech_start]
                 nonspeech_start = speech_end + 1
-                self.create_segment_tf(v, speech_start, speech_end, 'speech')
-
+                v.new_annotation(AnnotationTypes.TimeFrame, start=speech_start, end=speech_end, frameType='speech')
             if nonspeech_start < total_frames:
-                self.create_segment_tf(v, nonspeech_start, total_frames, 'non-speech')
+                v.new_annotation(AnnotationTypes.TimeFrame, start=nonspeech_start, end=total_frames, frameType='non-speech')
         return mmif
 
     def escape_filepath(self, path):
         return path.replace(os.sep, self.PATH_ESCAPER)
-
-    @staticmethod
-    def create_segment_tf(parent_view: View, start: float, end: float, frame_type: str) -> None:
-        assert frame_type in {'speech', 'non-speech'}
-        tf = parent_view.new_annotation(AnnotationTypes.TimeFrame)
-        # times should be passed in milliseconds
-        tf.add_property('start', start)
-        tf.add_property('end', end)
-        tf.add_property('frameType', frame_type)
 
     def run_bacs(self, files: list) -> (list, list):
         temp_dir = tempfile.TemporaryDirectory()
@@ -112,15 +86,23 @@ class BACS(ClamsApp):
         return segmented, audio_length
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--production',
-                        action='store_true')
+    parser.add_argument(
+        "--port", action="store", default="5000", help="set port to listen"
+    )
+    parser.add_argument("--production", action="store_true", help="run gunicorn server")
+    # more arguments as needed
+    # parser.add_argument(more_arg...)
+
     parsed_args = parser.parse_args()
 
-    segmenter_app = BACS()
-    segmenter_service = Restifier(segmenter_app)
+    # create the app instance
+    app = BrandeisAcs()
+
+    http_app = Restifier(app, port=int(parsed_args.port)
+    )
     if parsed_args.production:
-        segmenter_service.serve_production()
+        http_app.serve_production()
     else:
-        segmenter_service.run()
+        http_app.run()
